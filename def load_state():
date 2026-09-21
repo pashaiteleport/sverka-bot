@@ -88,7 +88,23 @@ def load_state():
 
     try:
         with open(STATE_FILE, "r", encoding="utf-8") as file:
-            return json.load(file)
+            state = json.load(file)
+
+        # Совместимость со старым форматом
+        if "seen_news" in state:
+            state["seen"] = []
+
+        if "seen" not in state:
+            state["seen"] = []
+
+        if "weather_date" not in state:
+            state["weather_date"] = ""
+
+        if "tip_date" not in state:
+            state["tip_date"] = ""
+
+        return state
+
     except Exception:
         return {
             "seen": [],
@@ -105,43 +121,42 @@ def save_state(state):
             state,
             file,
             ensure_ascii=False,
-            indent=2
+            indent=2,
         )
 
 
 # =========================
-# ТЕКСТ
+# TELEGRAM
 # =========================
 
-def normalize_text(text):
-    text = html.unescape(text or "")
-    text = re.sub(r"\s+", " ", text)
-    return text.strip().lower()
+def send_telegram(text):
+    if not BOT_TOKEN:
+        raise RuntimeError("Не найден TELEGRAM_BOT_TOKEN")
 
+    if not CHANNEL:
+        raise RuntimeError("Не найден TELEGRAM_CHANNEL")
 
-def similarity(text_a, text_b):
-    return SequenceMatcher(
-        None,
-        normalize_text(text_a),
-        normalize_text(text_b)
-    ).ratio()
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
 
+    payload = {
+        "chat_id": CHANNEL,
+        "text": text,
+        "parse_mode": "HTML",
+        "disable_web_page_preview": True,
+    }
 
-def get_domain(url):
-    match = re.search(
-        r"https?://([^/]+)",
-        url or ""
+    response = requests.post(
+        url,
+        json=payload,
+        timeout=30,
     )
 
-    if not match:
-        return ""
+    if not response.ok:
+        raise RuntimeError(
+            f"Telegram ошибка {response.status_code}: {response.text}"
+        )
 
-    domain = match.group(1).lower()
-
-    if domain.startswith("www."):
-        domain = domain[4:]
-
-    return domain
+    print("✅ Telegram: сообщение отправлено")
 
 
 # =========================
@@ -149,49 +164,20 @@ def get_domain(url):
 # =========================
 
 def get_verification_results(title):
-
-    encoded_title = quote(title)
-
-    url = (
-        "https://news.google.com/rss/search?"
-        f"q={encoded_title}"
-        "&hl=ru"
-        "&gl=UA"
-        "&ceid=UA:ru"
-    )
-
     try:
-        response = requests.get(
-            url,
-            timeout=20,
-            headers={
-                "User-Agent": "Mozilla/5.0"
-            }
+        query = quote(title)
+
+        url = (
+            "https://news.google.com/rss/search?"
+            f"q={query}&hl=ru&gl=UA&ceid=UA:ru"
         )
 
-        response.raise_for_status()
+        feed = feedparser.parse(url)
 
-        feed = feedparser.parse(
-            response.content
-        )
+        results = []
+        domains = set()
 
-    except Exception as error:
-        print(
-            f"Ошибка проверки новости: {error}"
-        )
-        return []
+        for entry in feed.entries[:VERIFICATION_RESULTS]:
+            entry_title = entry.get("title", "").strip()
 
-    sources = []
-    domains = set()
-
-    for item in feed.entries[:VERIFICATION_RESULTS]:
-
-        item_title = item.get(
-            "title",
-            ""
-        )
-
-        if not item_title:
-            continue
-
-       
+           
