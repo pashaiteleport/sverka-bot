@@ -26,9 +26,20 @@ def load_seen():
     try:
         with open(STATE, "r", encoding="utf-8") as f:
             data = json.load(f)
-        return data.get("seen", [])
-    except Exception:
-        return []
+
+        seen = data.get("seen", [])
+
+        if isinstance(seen, list):
+            return [
+                str(item).replace("\n", " ").strip()
+                for item in seen
+                if item
+            ]
+
+    except Exception as error:
+        print("Ошибка памяти:", error)
+
+    return []
 
 
 def save_seen(seen):
@@ -68,61 +79,62 @@ def send(text):
 
 
 def get_news(query):
-    try:
-        url = (
-            "https://news.google.com/rss/search?q="
-            + urllib.parse.quote(query)
-            + "&hl=ru&gl=UA&ceid=UA:ru"
-        )
+    url = (
+        "https://news.google.com/rss/search?q="
+        + urllib.parse.quote(query)
+        + "&hl=ru&gl=UA&ceid=UA:ru"
+    )
 
-        request = urllib.request.Request(
-            url,
-            headers={"User-Agent": "Mozilla/5.0"}
-        )
+    request = urllib.request.Request(
+        url,
+        headers={"User-Agent": "Mozilla/5.0"}
+    )
 
-        data = urllib.request.urlopen(
-            request,
-            timeout=30
-        ).read()
+    data = urllib.request.urlopen(
+        request,
+        timeout=30
+    ).read()
 
-        root = ET.fromstring(data)
+    root = ET.fromstring(data)
 
-        news = []
+    news = []
 
-        for item in root.findall(".//item")[:10]:
-            title = item.find("title")
+    for item in root.findall(".//item")[:10]:
+        title = item.find("title")
 
-            if title is not None and title.text:
-                news.append(title.text.strip())
+        if title is not None and title.text:
+            news.append(title.text.strip())
 
-        return news
-
-    except Exception as error:
-        print("RSS error:", error)
-        return []
+    return news
 
 
 def duplicate(title, seen):
-    title_lower = title.lower()
+    title = title.lower()
 
     for old in seen:
-        old_lower = old.lower()
+        old = old.lower()
 
         similarity = SequenceMatcher(
             None,
-            title_lower,
-            old_lower
+            title,
+            old
         ).ratio()
 
-        words1 = set(title_lower.split())
-        words2 = set(old_lower.split())
+        words1 = set(title.split())
+        words2 = set(old.split())
+
+        if not words1 or not words2:
+            continue
 
         common = len(words1 & words2) / max(
             len(words1),
             len(words2)
         )
 
-        if similarity >= 0.80 or common >= 0.55:
+        if similarity >= 0.80:
+            return True
+
+        if common >= 0.55:
             return True
 
     return False
@@ -138,11 +150,19 @@ def main():
         raise Exception("Нет TELEGRAM_CHANNEL")
 
     seen = load_seen()
+
+    print("В памяти:", len(seen))
+
     published = 0
 
     for category, query in FEEDS.items():
 
-        news = get_news(query)
+        try:
+            news = get_news(query)
+        except Exception as error:
+            print("Ошибка категории:", category)
+            print(error)
+            continue
 
         for title in news:
 
@@ -167,10 +187,8 @@ def main():
 
     save_seen(seen)
 
-    print(
-        "Новых новостей:",
-        published
-    )
+    print("Новых новостей:", published)
+    print("Память сохранена:", len(seen))
 
 
 if __name__ == "__main__":
