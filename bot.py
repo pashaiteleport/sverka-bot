@@ -1,7 +1,5 @@
-
 import os
 import json
-import hashlib
 import random
 import html
 import re
@@ -9,6 +7,7 @@ from pathlib import Path
 from datetime import datetime
 from zoneinfo import ZoneInfo
 from difflib import SequenceMatcher
+from urllib.parse import quote
 
 import requests
 import feedparser
@@ -41,22 +40,18 @@ FEEDS = {
         "https://news.google.com/rss/search?"
         "q=Украина&hl=ru&gl=UA&ceid=UA:ru"
     ),
-
     "🌍 Мир": (
         "https://news.google.com/rss/search?"
         "q=мир+новости&hl=ru&gl=UA&ceid=UA:ru"
     ),
-
     "💻 Технологии": (
         "https://news.google.com/rss/search?"
         "q=технологии+AI&hl=ru&gl=UA&ceid=UA:ru"
     ),
-
     "🔬 Наука": (
         "https://news.google.com/rss/search?"
         "q=наука+космос&hl=ru&gl=UA&ceid=UA:ru"
     ),
-
     "💰 Экономика": (
         "https://news.google.com/rss/search?"
         "q=экономика+бизнес&hl=ru&gl=UA&ceid=UA:ru"
@@ -65,7 +60,7 @@ FEEDS = {
 
 
 # =========================
-# СОВЕТ ДНЯ
+# СОВЕТЫ
 # =========================
 
 DAILY_TIPS = [
@@ -92,8 +87,8 @@ def load_state():
         }
 
     try:
-        with open(STATE_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
+        with open(STATE_FILE, "r", encoding="utf-8") as file:
+            return json.load(file)
     except Exception:
         return {
             "seen": [],
@@ -105,12 +100,17 @@ def load_state():
 def save_state(state):
     STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
 
-    with open(STATE_FILE, "w", encoding="utf-8") as f:
-        json.dump(state, f, ensure_ascii=False, indent=2)
+    with open(STATE_FILE, "w", encoding="utf-8") as file:
+        json.dump(
+            state,
+            file,
+            ensure_ascii=False,
+            indent=2
+        )
 
 
 # =========================
-# ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
+# ТЕКСТ
 # =========================
 
 def normalize_text(text):
@@ -119,21 +119,20 @@ def normalize_text(text):
     return text.strip().lower()
 
 
-def make_id(title):
-    normalized = normalize_text(title)
-    return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
-
-
-def similarity(a, b):
+def similarity(text_a, text_b):
     return SequenceMatcher(
         None,
-        normalize_text(a),
-        normalize_text(b)
+        normalize_text(text_a),
+        normalize_text(text_b)
     ).ratio()
 
 
 def get_domain(url):
-    match = re.search(r"https?://([^/]+)", url or "")
+    match = re.search(
+        r"https?://([^/]+)",
+        url or ""
+    )
+
     if not match:
         return ""
 
@@ -150,15 +149,49 @@ def get_domain(url):
 # =========================
 
 def get_verification_results(title):
-    """
-    Ищем публикации с максимально похожим заголовком
-    в Google News RSS.
 
-    Возвращаем уникальные домены источников.
-    """
-
-    query = requests.utils.quote(title)
+    encoded_title = quote(title)
 
     url = (
         "https://news.google.com/rss/search?"
-        f"q={query}&hl=ru&gl
+        f"q={encoded_title}"
+        "&hl=ru"
+        "&gl=UA"
+        "&ceid=UA:ru"
+    )
+
+    try:
+        response = requests.get(
+            url,
+            timeout=20,
+            headers={
+                "User-Agent": "Mozilla/5.0"
+            }
+        )
+
+        response.raise_for_status()
+
+        feed = feedparser.parse(
+            response.content
+        )
+
+    except Exception as error:
+        print(
+            f"Ошибка проверки новости: {error}"
+        )
+        return []
+
+    sources = []
+    domains = set()
+
+    for item in feed.entries[:VERIFICATION_RESULTS]:
+
+        item_title = item.get(
+            "title",
+            ""
+        )
+
+        if not item_title:
+            continue
+
+       
