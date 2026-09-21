@@ -8,10 +8,6 @@ import requests
 import feedparser
 
 
-# =========================
-# НАСТРОЙКИ
-# =========================
-
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHANNEL = os.environ.get("TELEGRAM_CHANNEL")
 
@@ -25,20 +21,12 @@ RSS_FEEDS = [
 ]
 
 
-# =========================
-# ПРОВЕРКА НАСТРОЕК
-# =========================
-
 if not TELEGRAM_BOT_TOKEN:
     raise RuntimeError("Не задан TELEGRAM_BOT_TOKEN")
 
 if not TELEGRAM_CHANNEL:
     raise RuntimeError("Не задан TELEGRAM_CHANNEL")
 
-
-# =========================
-# СОСТОЯНИЕ
-# =========================
 
 def load_seen():
     if not STATE_FILE.exists():
@@ -54,16 +42,11 @@ def load_seen():
 def save_seen(seen):
     STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
 
-    # Храним только последние 1000 новостей
     data = list(seen)[-1000:]
 
     with open(STATE_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
-
-# =========================
-# TELEGRAM
-# =========================
 
 def send_telegram(text):
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
@@ -81,10 +64,6 @@ def send_telegram(text):
     response.raise_for_status()
 
 
-# =========================
-# RSS
-# =========================
-
 def get_news():
     news = []
 
@@ -95,7 +74,6 @@ def get_news():
             for item in feed.entries[:10]:
                 title = item.get("title", "").strip()
                 link = item.get("link", "").strip()
-                summary = item.get("summary", "").strip()
 
                 if not title or not link:
                     continue
@@ -108,7 +86,6 @@ def get_news():
                     "id": news_id,
                     "category": category,
                     "title": title,
-                    "summary": summary,
                     "link": link,
                 })
 
@@ -118,14 +95,62 @@ def get_news():
     return news
 
 
-# =========================
-# ФОРМИРОВАНИЕ ПОСТА
-# =========================
-
 def make_post(item):
-    category = item["category"]
     title = item["title"]
+    category = item["category"]
     link = item["link"]
 
-    return (
-        f"📰 {title
+    current_time = datetime.now(timezone.utc).strftime(
+        "%d.%m.%Y %H:%M UTC"
+    )
+
+    post = (
+        f"📰 {title}\n\n"
+        f"📂 Рубрика: {category}\n\n"
+        f"🔎 СВЕРКА:\n"
+        f"Информация поступила из указанного источника. "
+        f"На этом этапе мы не называем неподтверждённую "
+        f"информацию фейком.\n\n"
+        f"🔗 Источник: {link}\n\n"
+        f"🕐 {current_time}"
+    )
+
+    return post
+
+
+def main():
+    print("🚀 СВЕРКА запущена")
+
+    seen = load_seen()
+    news = get_news()
+
+    print(f"Получено новостей: {len(news)}")
+
+    new_count = 0
+
+    for item in news:
+        if item["id"] in seen:
+            continue
+
+        try:
+            post = make_post(item)
+            send_telegram(post)
+
+            seen.add(item["id"])
+            new_count += 1
+
+            print(f"✅ Опубликовано: {item['title']}")
+
+        except Exception as e:
+            print(f"❌ Ошибка публикации: {e}")
+
+        if new_count >= MAX_NEWS_PER_RUN:
+            break
+
+    save_seen(seen)
+
+    print(f"🏁 Готово. Опубликовано: {new_count}")
+
+
+if __name__ == "__main__":
+    main()
