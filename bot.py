@@ -214,3 +214,234 @@ def get_news():
                 ).hexdigest()
 
                 news.append({
+                    "id": news_id,
+                    "category": category,
+                    "title": title,
+                    "description": shorten_description(
+                        description
+                    ),
+                    "link": link,
+                })
+
+        except Exception as error:
+            print(
+                f"Ошибка RSS {feed_url}: {error}"
+            )
+
+    return news
+
+
+def make_news_post(item):
+    category_icons = {
+        "Украина": "🇺🇦",
+        "Мир": "🌍",
+        "Технологии": "🤖",
+        "Наука": "🔬",
+        "Бизнес": "💰",
+    }
+
+    icon = category_icons.get(
+        item["category"],
+        "📰",
+    )
+
+    title = item["title"]
+    description = item.get(
+        "description",
+        "",
+    )
+
+    if description and title_similarity(
+        title,
+        description,
+    ) >= 0.55:
+        description = ""
+
+    if description:
+        if len(description) > 350:
+            description = (
+                description[:350]
+                .rsplit(" ", 1)[0]
+                + "…"
+            )
+
+        body = description
+
+    else:
+        body = (
+            "Подробности доступны "
+            "в исходной информационной ленте."
+        )
+
+    return (
+        f"📰 {title}\n\n"
+        f"{body}\n\n"
+        f"{icon} {item['category']}\n\n"
+        f"🟡 Информация требует проверки "
+        f"по дополнительным независимым источникам."
+    )
+
+
+def get_weather():
+    url = (
+        "https://api.open-meteo.com/v1/forecast"
+    )
+
+    params = {
+        "latitude": 50.4501,
+        "longitude": 30.5234,
+        "current": (
+            "temperature_2m,"
+            "apparent_temperature,"
+            "precipitation,"
+            "wind_speed_10m"
+        ),
+        "timezone": "Europe/Kyiv",
+    }
+
+    response = requests.get(
+        url,
+        params=params,
+        timeout=30,
+    )
+
+    response.raise_for_status()
+
+    current = response.json()["current"]
+
+    return (
+        "🌤 ПОГОДА В КИЕВЕ\n\n"
+        f"🌡 Температура: "
+        f"{current.get('temperature_2m')}°C\n"
+        f"🥶 Ощущается как: "
+        f"{current.get('apparent_temperature')}°C\n"
+        f"🌧 Осадки: "
+        f"{current.get('precipitation')} мм\n"
+        f"💨 Ветер: "
+        f"{current.get('wind_speed_10m')} км/ч"
+    )
+
+
+def get_daily_tip(date_text):
+    seed = int(
+        date_text.replace("-", "")
+    )
+
+    return random.Random(
+        seed
+    ).choice(TIPS)
+
+
+def main():
+    print(
+        "🚀 СВЕРКА 4.0 запущена"
+    )
+
+    today = datetime.now(
+        TIMEZONE
+    ).strftime("%Y-%m-%d")
+
+    state = load_state()
+
+    news = get_news()
+
+    print(
+        f"Получено новостей: {len(news)}"
+    )
+
+    new_count = 0
+    selected_items = []
+
+    for item in news:
+
+        if item["id"] in state["seen_news"]:
+            continue
+
+        if is_duplicate_news(
+            item,
+            selected_items,
+        ):
+            print(
+                f"⏭ Дубликат: "
+                f"{item['title']}"
+            )
+            continue
+
+        try:
+            send_telegram(
+                make_news_post(item)
+            )
+
+            state["seen_news"].append(
+                item["id"]
+            )
+
+            selected_items.append(item)
+
+            new_count += 1
+
+            print(
+                f"✅ Опубликовано: "
+                f"{item['title']}"
+            )
+
+        except Exception as error:
+            print(
+                f"❌ Ошибка публикации: "
+                f"{error}"
+            )
+
+        if new_count >= MAX_NEWS_PER_RUN:
+            break
+
+    if state["last_weather_date"] != today:
+        try:
+            send_telegram(
+                get_weather()
+            )
+
+            state[
+                "last_weather_date"
+            ] = today
+
+            print(
+                "🌤 Погода опубликована"
+            )
+
+        except Exception as error:
+            print(
+                f"❌ Ошибка погоды: "
+                f"{error}"
+            )
+
+    if state["last_tip_date"] != today:
+        try:
+            send_telegram(
+                get_daily_tip(today)
+            )
+
+            state[
+                "last_tip_date"
+            ] = today
+
+            print(
+                "💡 Совет опубликован"
+            )
+
+        except Exception as error:
+            print(
+                f"❌ Ошибка совета: "
+                f"{error}"
+            )
+
+    save_state(state)
+
+    print(
+        f"🏁 Готово. "
+        f"Новостей опубликовано: "
+        f"{new_count}"
+    )
+
+
+if __name__ == "__main__":
+    main()
