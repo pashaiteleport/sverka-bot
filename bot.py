@@ -18,38 +18,160 @@ FEEDS = {
     "💰 Экономика": "экономика бизнес",
 }
 
+
 def load_seen():
     if not STATE.exists():
         return []
+
     try:
-        return json.load(open(STATE, encoding="utf-8")).get("seen", [])
-    except:
+        with open(STATE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return data.get("seen", [])
+    except Exception:
         return []
 
+
 def save_seen(seen):
-    STATE.parent.mkdir(exist_ok=True)
-    json.dump({"seen": seen[-1000:]}, open(STATE, "w", encoding="utf-8"),
-              ensure_ascii=False, indent=2)
+    STATE.parent.mkdir(parents=True, exist_ok=True)
+
+    with open(STATE, "w", encoding="utf-8") as f:
+        json.dump(
+            {"seen": seen[-1000:]},
+            f,
+            ensure_ascii=False,
+            indent=2
+        )
+
 
 def send(text):
-    url = "https://api.telegram.org/bot" + TOKEN + "/sendMessage"
-    data = urllib.parse.urlencode({"chat_id": CHAT, "text": text}).encode()
+    url = (
+        "https://api.telegram.org/bot"
+        + TOKEN
+        + "/sendMessage"
+    )
+
+    data = urllib.parse.urlencode({
+        "chat_id": CHAT,
+        "text": text
+    }).encode()
+
+    request = urllib.request.Request(
+        url,
+        data=data,
+        method="POST"
+    )
+
     urllib.request.urlopen(
-        urllib.request.Request(url, data=data, method="POST"),
+        request,
         timeout=30
     )
 
+
 def get_news(query):
-    url = "https://news.google.com/rss/search?q=" + urllib.parse.quote(query)
-    url += "&hl=ru&gl=UA&ceid=UA:ru"
-    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-    root = ET.fromstring(urllib.request.urlopen(req, timeout=30).read())
+    try:
+        url = (
+            "https://news.google.com/rss/search?q="
+            + urllib.parse.quote(query)
+            + "&hl=ru&gl=UA&ceid=UA:ru"
+        )
 
-    result = []
-    for item in root.findall(".//item")[:10]:
-        title = item.find("title")
-        if title is not None and title.text:
-            result.append(title.text.strip())
-    return result
+        request = urllib.request.Request(
+            url,
+            headers={"User-Agent": "Mozilla/5.0"}
+        )
 
-def
+        data = urllib.request.urlopen(
+            request,
+            timeout=30
+        ).read()
+
+        root = ET.fromstring(data)
+
+        news = []
+
+        for item in root.findall(".//item")[:10]:
+            title = item.find("title")
+
+            if title is not None and title.text:
+                news.append(title.text.strip())
+
+        return news
+
+    except Exception as error:
+        print("RSS error:", error)
+        return []
+
+
+def duplicate(title, seen):
+    title_lower = title.lower()
+
+    for old in seen:
+        old_lower = old.lower()
+
+        similarity = SequenceMatcher(
+            None,
+            title_lower,
+            old_lower
+        ).ratio()
+
+        words1 = set(title_lower.split())
+        words2 = set(old_lower.split())
+
+        common = len(words1 & words2) / max(
+            len(words1),
+            len(words2)
+        )
+
+        if similarity >= 0.80 or common >= 0.55:
+            return True
+
+    return False
+
+
+def main():
+    print("СВЕРКА запущена")
+
+    if not TOKEN:
+        raise Exception("Нет TELEGRAM_BOT_TOKEN")
+
+    if not CHAT:
+        raise Exception("Нет TELEGRAM_CHANNEL")
+
+    seen = load_seen()
+    published = 0
+
+    for category, query in FEEDS.items():
+
+        news = get_news(query)
+
+        for title in news:
+
+            if duplicate(title, seen):
+                print("Дубликат:", title)
+                continue
+
+            send(
+                category
+                + "\n\n📰 "
+                + title
+            )
+
+            seen.append(title)
+            published += 1
+
+            if published >= 5:
+                break
+
+        if published >= 5:
+            break
+
+    save_seen(seen)
+
+    print(
+        "Новых новостей:",
+        published
+    )
+
+
+if __name__ == "__main__":
+    main()
