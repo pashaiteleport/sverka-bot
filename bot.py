@@ -1,18 +1,26 @@
 import os
-import urllib.parse
 import urllib.request
+import urllib.parse
+import xml.etree.ElementTree as ET
 
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 CHAT = os.getenv("TELEGRAM_CHANNEL")
 
+FEEDS = {
+    "🇺🇦 Украина": "Украина",
+    "🌍 Мир": "мир новости",
+    "💻 Технологии": "технологии AI",
+    "🔬 Наука": "наука космос",
+    "💰 Экономика": "экономика бизнес",
+}
 
-def send(text):
-    if not TOKEN:
-        raise Exception("Нет TELEGRAM_BOT_TOKEN")
-    if not CHAT:
-        raise Exception("Нет TELEGRAM_CHANNEL")
 
-    url = "https://api.telegram.org/bot" + TOKEN + "/sendMessage"
+def telegram(text):
+    url = (
+        "https://api.telegram.org/bot"
+        + TOKEN
+        + "/sendMessage"
+    )
 
     data = urllib.parse.urlencode({
         "chat_id": CHAT,
@@ -25,17 +33,64 @@ def send(text):
         method="POST",
     )
 
-    with urllib.request.urlopen(request, timeout=30) as response:
-        result = response.read().decode()
+    urllib.request.urlopen(
+        request,
+        timeout=30,
+    )
 
-    if '"ok":true' not in result:
-        raise Exception(result)
+
+def get_news(query):
+    encoded = urllib.parse.quote(query)
+
+    url = (
+        "https://news.google.com/rss/search?q="
+        + encoded
+        + "&hl=ru&gl=UA&ceid=UA:ru"
+    )
+
+    request = urllib.request.Request(
+        url,
+        headers={
+            "User-Agent": "Mozilla/5.0"
+        },
+    )
+
+    data = urllib.request.urlopen(
+        request,
+        timeout=30,
+    ).read()
+
+    root = ET.fromstring(data)
+
+    news = []
+
+    for item in root.findall(".//item")[:3]:
+        title = item.find("title")
+
+        if title is not None and title.text:
+            news.append(title.text.strip())
+
+    return news
 
 
 def main():
-    print("СВЕРКА TEST запущена")
-    send("🟢 СВЕРКА работает!")
-    print("Сообщение отправлено в Telegram")
+    print("СВЕРКА NEWS запущена")
+
+    for category, query in FEEDS.items():
+
+        news = get_news(query)
+
+        for title in news:
+
+            message = (
+                category
+                + "\n\n📰 "
+                + title
+            )
+
+            telegram(message)
+
+    print("Новости отправлены")
 
 
 if __name__ == "__main__":
