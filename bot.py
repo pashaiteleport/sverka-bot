@@ -14,10 +14,22 @@ TELEGRAM_CHANNEL = os.environ.get("TELEGRAM_CHANNEL")
 STATE_FILE = Path("data/seen.json")
 MAX_NEWS_PER_RUN = 5
 
-RSS_FEEDS = [
+    RSS_FEEDS = [
+    # 🌍 Мир
     ("Мир", "https://feeds.bbci.co.uk/news/world/rss.xml"),
+    ("Мир", "https://rss.dw.com/xml/rss-en-all"),
+
+    # 🤖 Технологии
     ("Технологии", "https://feeds.bbci.co.uk/news/technology/rss.xml"),
+
+    # 🔬 Наука
     ("Наука", "https://feeds.bbci.co.uk/news/science_and_environment/rss.xml"),
+
+    # 🌍 Euronews
+    ("Мир", "https://feeds.euronews.com/rss/en/world"),
+    ("Спорт", "https://feeds.euronews.com/rss/en/sport"),
+    ("Культура", "https://feeds.euronews.com/rss/en/culture"),
+]
 ]
 
 
