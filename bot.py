@@ -12,9 +12,9 @@ TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHANNEL = os.environ.get("TELEGRAM_CHANNEL")
 
 STATE_FILE = Path("data/seen.json")
-MAX_NEWS_PER_RUN = 5
+MAX_NEWS_PER_RUN = 10
 
-    RSS_FEEDS = [
+RSS_FEEDS = [
     # 🌍 Мир
     ("Мир", "https://feeds.bbci.co.uk/news/world/rss.xml"),
     ("Мир", "https://rss.dw.com/xml/rss-en-all"),
@@ -29,7 +29,6 @@ MAX_NEWS_PER_RUN = 5
     ("Мир", "https://feeds.euronews.com/rss/en/world"),
     ("Спорт", "https://feeds.euronews.com/rss/en/sport"),
     ("Культура", "https://feeds.euronews.com/rss/en/culture"),
-]
 ]
 
 
@@ -116,18 +115,16 @@ def make_post(item):
         "%d.%m.%Y %H:%M UTC"
     )
 
-    post = (
+    return (
         f"📰 {title}\n\n"
         f"📂 Рубрика: {category}\n\n"
         f"🔎 СВЕРКА:\n"
         f"Информация поступила из указанного источника. "
-        f"На этом этапе мы не называем неподтверждённую "
-        f"информацию фейком.\n\n"
+        f"Мы не называем неподтверждённую информацию фейком "
+        f"без дополнительной проверки.\n\n"
         f"🔗 Источник: {link}\n\n"
         f"🕐 {current_time}"
     )
-
-    return post
 
 
 def main():
